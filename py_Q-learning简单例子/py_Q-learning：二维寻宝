@@ -1,0 +1,131 @@
+Q-learning算法概述：
+    首先初始化S为当前状态序列的第一个状态，终止状态各个动作的q值都为0。在状态S通过
+epsilon-贪婪法选择了一个动作A，执行这个动作A，到达了状态S'并返回了一个延时奖励。在状
+态S' 使用贪婪法选择使Q(S'，A')最大的A' 对应的q值来更新Q值表，此时动作A'不会真正执行。
+Q值表更新后，需要基于状态S' 用epsilon-贪婪法重新选择需要执行的动作A'
+
+
+Q-learning流程：
+
+Initialize Q(s,a) arbitrarily
+Repeat (for each episode):
+    Initialize s
+    Repeat (for each step of episode):
+        Choose a from s using policy derived from Q (e.g.,epsilon-greedy)
+        Take action a, observe r, s'
+        Q(s,a)⬅Q(s,a) + alpha[R + r max Q(s',a') - Q(s,a)]
+        s⬅s';
+    until s is terminal
+    
+    
+A simple example for Reinforcement Learning using table lookup Q-learning method.
+An agent "o" is on the left of a 1 dimensional world, the treasure is on the rightmost location.
+Run this program and to see how the agent will improve its strategy of finding the treasure.
+使用表查找Q_learing方法的强化学习的简单示例。 
+代理“o”位于一维世界的左侧，宝藏位于最右侧的位置。 运行此程序，看看代理将如何改进其寻找宝藏的策略。
+=======================================================================================================================================
+
+import numpy as np
+import pandas as pd
+import time
+
+np.random.seed(2)  # reproducible
+
+
+N_STATES = 6   # 一维世界的长度，第六位为宝藏
+ACTIONS = ['left', 'right']     # 可以选择的动作
+EPSILON = 0.9   # 探索率
+ALPHA = 0.1     # 学习率
+GAMMA = 0.9    # 衰减因子
+MAX_EPISODES = 13   # 迭代次数，即学习的次数
+FRESH_TIME = 0.3    # 每一次移动的间隔时间
+
+# 创建动作价值函数表格
+def build_q_table(n_states, actions):
+    table = pd.DataFrame(
+        np.zeros((n_states, len(actions))),     # 初始化q_table，全为0,大小为 状态数×动作数
+        columns=actions,    # table的列名为可选动作的名字
+    )
+    return table
+
+# 选择动作
+def choose_action(state, q_table):
+    # 以下解释说明如何选择动作
+    state_actions = q_table.iloc[state, :] # 从q表中获取到当前状态可选所有动作的q值
+    # 以0.1的概率随机选择行为
+    # 从均匀分布中随机采样，采用epsilon-贪婪算法
+    # 若大于探索率 或 当前状态动作q值都为0，则随机选取动作
+    if (np.random.uniform() > EPSILON) or ((state_actions == 0).all()):  
+        action_name = np.random.choice(ACTIONS)# 从action中随机抽取一个动作
+    else:   
+        action_name = state_actions.idxmax() # 选择q值最大的那个动作
+    return action_name
+
+
+def get_env_feedback(S, A):
+    # 这是代理与环境交互的方式
+    # 在这里会执行动作，更新状态并返回奖励
+    if A == 'right':    # 右移
+        if S == N_STATES - 2:   # 当前状态为宝藏的左边，右移后到达宝藏位置
+            S_ = 'terminal' # 移动后的状态为“宝藏”
+            R = 1 # 奖励为1
+        else:
+            S_ = S + 1
+            R = 0
+    else:   # 左移
+        R = 0 # 左移永远不会到达宝藏，所以奖励总为0
+        if S == 0: # 如果当前状态为起始点，即最左边
+            S_ = S  # 就会撞墙，让左移后的状态还为起始状态
+        else:
+            S_ = S - 1
+    return S_, R
+
+# 这一部分是环境的建立与更新，不是强化学习的主要部分，可以跳过
+def update_env(S, episode, step_counter):
+
+    # 环境是在列表中的，即起始状态索引值为0，宝藏 T 索引值为5
+    env_list = ['-']*(N_STATES-1) + ['T']   # '-----T' 建立好我们的环境
+    if S == 'terminal':
+        interaction = 'Episode %s: total_steps = %s' % (episode+1, step_counter)
+        print('\r{}'.format(interaction), end='')
+        time.sleep(2)
+        print('\r                                ', end='')
+    else:
+        env_list[S] = 'o'
+        interaction = ''.join(env_list)
+        print('\r{}'.format(interaction), end='')
+        time.sleep(FRESH_TIME)
+
+
+def rl():
+    # 主要的强化学习部分，即整个算法的流程框架
+    q_table = build_q_table(N_STATES, ACTIONS)# 调用build_q_table函数，初始化q值表
+    for episode in range(MAX_EPISODES): # 在迭代次数里学习
+        step_counter = 0 # 走的步数，每一轮都要重新计数
+        S = 0 # 起始状态位置，每一轮起始位置都是最左边
+        is_terminated = False # 判定是否走到终点处
+        update_env(S, episode, step_counter)# 调用update_env函数，初始化环境
+        
+        # 没有走到宝藏处时循环，直到走到宝藏处
+        while not is_terminated:
+            A = choose_action(S, q_table) # 调用choose_action函数，用epsilon-贪婪算法选择动作
+            S_, R = get_env_feedback(S, A)  # 调用get_env_feedback函数，执行动作，并得到下一个状态和延时奖励
+            q_predict = q_table.loc[S, A] #  记录当前状态 S 采取动作 A 的q值
+            if S_ != 'terminal': # 下一个状态不是宝藏，因为到达宝藏处后S_就没有后续动作了
+                q_target = R + GAMMA * q_table.iloc[S_, :].max() #  找到下一个状态所有动作中最大的q值，进行计算 
+            else: # 下一个状态是宝藏，终止状态的各个动作的q值都为0
+                q_target = R     
+                is_terminated = True    # 终止while循环
+
+            q_table.loc[S, A] += ALPHA * (q_target - q_predict)  # 更新q值表中当前状态的q值
+            S = S_  # 移动到下一个状态
+
+            update_env(S, episode, step_counter+1) # 调用update_env函数，在环境中演示状态的变化
+            step_counter += 1 # 步数加1
+    return q_table
+
+
+if __name__ == "__main__":
+    q_table = rl()
+    print('\r\nQ-table:\n')
+    print(q_table)
